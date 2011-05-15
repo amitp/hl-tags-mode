@@ -1,6 +1,7 @@
-;;; hl-tags-mode --- Highlight the current SGML tag context
+;;; hl-tags-mode --- Highlight the current NXML tag context
 
 ;; Copyright (c) 2011 Mike Spindel <deactivated@gmail.com>
+;; Modified by Amit J Patel <amitp@cs.stanford.edu> for nxml-mode
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -17,13 +18,13 @@
 
 ;;; Commentary:
 
-;; hl-tags-mode is a minor mode for SGML editing that highlights the
+;; hl-tags-mode is a minor mode for NXML editing that highlights the
 ;; current start and end tag.
 ;;
 ;; To use hl-tags-mode, add the following to your .emacs:
 ;;
 ;;   (require 'hl-tags-mode)
-;;   (add-hook 'sgml-mode-hook (lambda () (hl-tags-mode 1)))
+;;   (add-hook 'nxml-mode-hook (lambda () (hl-tags-mode 1)))
           
 
 ;;; Code:
@@ -35,27 +36,34 @@
 (make-variable-buffer-local 'hl-tags-end-overlay)
 
 (defun hl-tags-context ()
+  "Return ((start . end) . (start . end)) points for start/end tags, or nil"
   (save-excursion
-    (let ((ctx (sgml-get-context)))
-      (and ctx
-           (if (eq (sgml-tag-type (car ctx)) 'close)
-               (cons (sgml-get-context) ctx)
-             (cons ctx (progn
-                         (sgml-skip-tag-forward 1)
-                         (backward-char 1)
-                         (sgml-get-context))))))))
+    (when (= (point) (nxml-token-before))
+      (nxml-token-after))
+    (when (memq xmltok-type '(start-tag end-tag))
+      (let (start1 end1 start2 end2)
+        ;; Note: this is hackery; there's probably a better way to do
+        ;; this.  We want to know where the current element's start
+        ;; and end tags are.
+        (unless (looking-at ">") (forward-char))
+        (nxml-up-element)
+        (setq end2 (point))
+        (nxml-backward-single-balanced-item)
+        (setq start1 (point))
+        (nxml-down-element)
+        (setq end1 (point))
+        (nxml-up-element)
+        (nxml-backward-down-element)
+        (setq start2 (point))
+        (cons (cons start1 end1) (cons start2 end2))))))
 
 (defun hl-tags-update ()
   (let ((ctx (hl-tags-context)))
     (if (null ctx)
         (hl-tags-hide)
       (hl-tags-show)
-      (move-overlay hl-tags-end-overlay
-                    (sgml-tag-start (caar ctx))
-                    (sgml-tag-end (caar ctx)))
-      (move-overlay hl-tags-start-overlay
-                    (sgml-tag-start (cadr ctx))
-                    (sgml-tag-end (cadr ctx))))))
+      (move-overlay hl-tags-end-overlay (caar ctx) (cdar ctx))
+      (move-overlay hl-tags-start-overlay (cadr ctx) (cddr ctx)))))
 
 (defun hl-tags-show ()
   (unless hl-tags-start-overlay
